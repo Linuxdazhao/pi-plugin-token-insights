@@ -34,6 +34,10 @@ const POLL_HIDDEN_MS = 6_000;
 const SCAN_STALE_MS = 30_000;
 const HEAT_WEEKS = 53;
 const SPARK_DAYS = 60;
+/** Days drawn in the daily composition chart; the range filter still owns the data. */
+const COMPOSITION_DAYS = 14;
+/** Token kinds the composition chart stacks, bottom to top. */
+const COMPOSITION_KINDS = ["input", "cacheRead", "cacheWrite", "output"];
 const RANGES = ["7d", "30d", "90d", "1y", "all", "custom"];
 const RANGE_DAYS = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
 
@@ -115,6 +119,27 @@ const STRINGS = {
     shareOfTotal: (pct) => `${pct}% of total`,
     perReply: (amount) => `${amount} per reply`,
     noneInWindow: "None in this window",
+    /* overview + composition */
+    overviewTitle: "Context overview",
+    overviewNote: "the window you are looking at",
+    kpiSessions: "Sessions",
+    kpiSessionsNote: (days) => `${days} active ${days === 1 ? "day" : "days"}`,
+    kpiReplies: "Replies",
+    kpiRepliesNote: (amount) => `${amount} per session`,
+    kpiTokens: "Tokens",
+    kpiTokensNote: (amount) => `${amount} per reply`,
+    kpiCacheHit: "Cache hit",
+    kpiCacheHitNote: (amount) => `${amount} served from cache`,
+    kpiCacheHitNone: "No cache reads",
+    kpiActiveDays: "Active days",
+    kpiActiveDaysNote: (days) => `longest streak ${days}`,
+    kpiActiveDaysNone: "No streak yet",
+    compositionTitle: "Daily composition",
+    compositionNote: (days) => `last ${days} days`,
+    compositionDay: (date, tokens, replies) =>
+      `${date} · ${tokens} tokens · ${replies} ${String(replies) === "1" ? "reply" : "replies"}`,
+    compositionEmpty: "Nothing recorded in this range",
+    cacheWrite: "Cache write",
     /* blocks */
     activity: "Activity",
     activityNote: (weeks) => `last ${weeks} weeks`,
@@ -222,6 +247,25 @@ const STRINGS = {
     shareOfTotal: (pct) => `占总量 ${pct}%`,
     perReply: (amount) => `每条回复 ${amount}`,
     noneInWindow: "这个范围内没有",
+    overviewTitle: "全局概览",
+    overviewNote: "当前筛选范围",
+    kpiSessions: "活跃会话",
+    kpiSessionsNote: (days) => `${days} 个活跃日`,
+    kpiReplies: "回复条数",
+    kpiRepliesNote: (amount) => `每段对话 ${amount}`,
+    kpiTokens: "Token 用量",
+    kpiTokensNote: (amount) => `每条回复 ${amount}`,
+    kpiCacheHit: "缓存命中",
+    kpiCacheHitNote: (amount) => `命中缓存 ${amount}`,
+    kpiCacheHitNone: "没有缓存读取",
+    kpiActiveDays: "活跃天数",
+    kpiActiveDaysNote: (days) => `最长连续 ${days} 天`,
+    kpiActiveDaysNone: "还没有连续记录",
+    compositionTitle: "每日构成",
+    compositionNote: (days) => `最近 ${days} 天`,
+    compositionDay: (date, tokens, replies) => `${date} · ${tokens} tokens · ${replies} 条回复`,
+    compositionEmpty: "这个范围内还没有记录",
+    cacheWrite: "缓存写入",
     activity: "活动",
     activityNote: (weeks) => `最近 ${weeks} 周`,
     less: "少",
@@ -1006,6 +1050,106 @@ function renderTiles() {
   }
 }
 
+function renderOverview() {
+  const t = state.t;
+  const totals = state.summary.totals;
+  const streak = state.summary.streak || {};
+  el("overviewTitle").textContent = t.overviewTitle;
+  el("overviewNote").textContent = t.overviewNote;
+  const rate = A.cacheHitRate(totals);
+  const cards = [
+    {
+      label: t.kpiSessions,
+      value: grouped(totals.sessions),
+      note: t.kpiSessionsNote(grouped(totals.activeDays)),
+    },
+    {
+      label: t.kpiReplies,
+      value: grouped(totals.messages),
+      note: totals.sessions
+        ? t.kpiRepliesNote(compact(Math.round(totals.messages / totals.sessions)))
+        : t.noneInWindow,
+    },
+    {
+      label: t.kpiTokens,
+      value: compact(totals.total),
+      title: grouped(totals.total),
+      note: totals.messages
+        ? t.kpiTokensNote(compact(Math.round(totals.total / totals.messages)))
+        : t.noneInWindow,
+    },
+    {
+      label: t.kpiCacheHit,
+      value: rate == null ? "—" : `${Math.round(rate * 100)}%`,
+      note: rate == null ? t.kpiCacheHitNone : t.kpiCacheHitNote(compact(totals.cacheRead)),
+    },
+    {
+      label: t.kpiActiveDays,
+      value: grouped(totals.activeDays),
+      note: streak.longest ? t.kpiActiveDaysNote(streak.longest) : t.kpiActiveDaysNone,
+    },
+  ];
+  const host = el("kpis");
+  clear(host);
+  for (const card of cards) {
+    const node = make("div", "kpi");
+    node.appendChild(make("div", "kpi-label", card.label));
+    const value = make("div", "kpi-value", card.value);
+    if (card.title) value.title = card.title;
+    node.appendChild(value);
+    node.appendChild(make("div", "kpi-note", card.note));
+    host.appendChild(node);
+  }
+}
+
+function renderComposition() {
+  const t = state.t;
+  const host = el("composition");
+  const axis = el("compositionAxis");
+  const legend = el("compositionLegend");
+  clear(host);
+  clear(axis);
+  clear(legend);
+  el("compositionTitle").textContent = t.compositionTitle;
+
+  const totals = state.summary.totals;
+  for (const kind of COMPOSITION_KINDS) {
+    const item = make("span");
+    item.title = grouped(totals[kind]);
+    item.appendChild(make("i", `seg-${kind}`));
+    item.appendChild(document.createTextNode(`${t[kind]} `));
+    item.appendChild(make("strong", null, compact(totals[kind])));
+    legend.appendChild(item);
+  }
+
+  const series = A.compositionSeries(state.summary, COMPOSITION_DAYS, A.todayKey());
+  // Scale by the stacked kinds, not by the canonical total: cache writes are
+  // drawn even though the total leaves them out, and a clipped cap would lie.
+  const stacked = (day) => day.input + day.cacheRead + day.cacheWrite + day.output;
+  const peak = series.reduce((best, day) => Math.max(best, stacked(day)), 0);
+  el("compositionNote").textContent = peak ? t.compositionNote(series.length) : t.compositionEmpty;
+  if (!peak) return;
+
+  for (const day of series) {
+    const column = make("div", "comp-day");
+    column.title = t.compositionDay(formatFullDay(day.date), grouped(day.total), grouped(day.messages));
+    const stack = make("div", "comp-stack");
+    stack.style.height = `${Math.max(2, Math.round((stacked(day) / peak) * 100))}%`;
+    for (const kind of COMPOSITION_KINDS) {
+      if (!day[kind]) continue;
+      const segment = make("i", `comp-seg seg-${kind}`);
+      segment.style.flexGrow = String(day[kind]);
+      stack.appendChild(segment);
+    }
+    column.appendChild(stack);
+    host.appendChild(column);
+  }
+  host.setAttribute("aria-label", t.compositionTitle);
+
+  axis.appendChild(make("span", null, formatDay(series[0].date)));
+  axis.appendChild(make("span", null, formatDay(series[series.length - 1].date)));
+}
+
 function heatLevels(values) {
   const sorted = values.filter((value) => value > 0).sort((left, right) => left - right);
   if (!sorted.length) return [0, 0, 0, 0];
@@ -1223,6 +1367,8 @@ function render() {
   const t = state.t;
   renderHero();
   renderTiles();
+  renderOverview();
+  renderComposition();
   renderHeatmap();
   renderRanking("modelRanking", state.summary.models, { sub: (row) => t.replies(grouped(row.messages)) });
   el("modelsNote").textContent = t.modelsNote(state.summary.models.length);

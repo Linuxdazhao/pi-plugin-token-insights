@@ -18,6 +18,14 @@ never leaves this device.
 - **Hero** — total tokens in the selected window, the change against the
   previous window of equal length, your best day and your busiest hour.
 - **Four counters** — input, output, cache read, reasoning.
+- **Context overview** — sessions, replies, tokens, cache-hit rate and active
+  days for the window you are looking at, so the shape of the window is
+  readable before any chart: how many conversations it took, how much of the
+  prompt came back from the provider cache, and how many days it touched.
+- **Four counters** — input, output, cache read, reasoning.
+- **Daily composition** — the last 14 days as stacked columns of input, cache
+  read, cache write and output, so a day that grew shows which kind it grew in.
+  Days with no usage stay in the chart as gaps rather than being squeezed out.
 - **Activity** — a 53-week heatmap; days outside the current filter stay dimmed
   so the window you picked is visible at a glance.
 - **Models / Tools / Providers / Sessions** — rankings with share of total.
@@ -25,6 +33,19 @@ never leaves this device.
 - **Streak and milestones** — current and longest streak, the last milestone you
   crossed and how far the next one is. Milestones are derived from your real
   cumulative curve, so every date shown is a date that happened.
+
+### What it deliberately does not show
+
+Two numbers from a full context dashboard need data this plugin cannot see
+without reading message bodies, which it promises never to do: how a single
+request split between system prompt, tool declarations, injected context, user
+and assistant messages, tool results; and what each session cost, which needs
+the host's model catalog prices. Tool-call counts come from the same message
+bodies. Totals, token kinds, sessions and days are all measured; nothing here is
+estimated from text.
+
+PI-Desktop tracks that gap as a plugin-facing aggregate in its own repository;
+when it lands, those two cards can be added without relaxing this promise.
 
 ## Filters
 

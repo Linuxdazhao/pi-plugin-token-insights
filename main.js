@@ -33,7 +33,7 @@ const {
   readProviderLabels,
 } = require("./host-read");
 
-const { aggregate, buildFacts, dayKeyFromTimestamp, milestones, shiftDayKey, todayKey } = aggregateApi;
+const { aggregate, buildFacts, cacheHitRate, compositionSeries, dayKeyFromTimestamp, milestones, shiftDayKey, todayKey } = aggregateApi;
 
 const RELATIVE = /^(\d+)\s*(d|w|m|y)$/i;
 /** How often the host's appearance record is re-checked while the plugin lives. */
@@ -482,6 +482,8 @@ module.exports = {
   __test: {
     aggregate,
     buildFacts,
+    cacheHitRate,
+    compositionSeries,
     buildReport,
     collectFacts,
     progressReporter,

@@ -928,6 +928,139 @@ svg {
   color: var(--ds-text-muted);
 }
 
+/* --------------------------------------------------------------- overview */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.kpi {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-inset);
+}
+
+.kpi-label {
+  /* Sentence case, like the block titles: a label such as "Cache hit" and its
+     Chinese counterpart "Token 用量" both read correctly, which an uppercase
+     transform does not promise once Latin and Han share a string. */
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--ds-text-faint);
+}
+
+.kpi-value {
+  margin-top: 6px;
+  font-family: var(--font-numeric);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.kpi-note {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ds-text-muted);
+}
+
+/* ------------------------------------------------------------ composition */
+
+.composition {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 116px;
+}
+
+.comp-day {
+  display: flex;
+  flex: 1 1 0;
+  align-items: flex-end;
+  min-width: 6px;
+  height: 100%;
+}
+
+.comp-stack {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 2px;
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.comp-seg {
+  display: block;
+  width: 100%;
+  min-height: 1px;
+}
+
+/* A hairline between kinds: four steps of one accent are close enough that a
+   boundary without a stroke reads as one bar (the design system forbids a
+   second hue, so separation has to come from geometry). */
+.comp-seg + .comp-seg {
+  box-shadow: inset 0 1px 0 0 var(--ds-bg-secondary);
+}
+
+/* One accent at varying alpha, spread wide enough for four visible steps. */
+.seg-input {
+  background: var(--ds-accent);
+}
+
+.seg-cacheRead {
+  background: color-mix(in oklab, var(--ds-accent) 72%, var(--ds-bg-inset));
+}
+
+.seg-cacheWrite {
+  background: color-mix(in oklab, var(--ds-accent) 46%, var(--ds-bg-inset));
+}
+
+/* 28%, not lower: an 8–16% step is indistinguishable from the block surface on
+   the dark palette, so the legend swatch would disappear entirely. */
+.seg-output {
+  background: color-mix(in oklab, var(--ds-accent) 28%, var(--ds-bg-inset));
+}
+
+.composition-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--ds-text-faint);
+}
+
+.composition-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ds-text-secondary);
+}
+
+.composition-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.composition-legend strong {
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.composition-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
 /* ----------------------------------------------------------------- blocks */
 
 .split {

@@ -115,6 +115,50 @@
   }
 
   /**
+   * Share of the prompt the provider served from its cache.
+   *
+   * `input` and `cacheRead` are the two halves of the prompt, so the rate is
+   * cacheRead / (input + cacheRead). A window with no prompt tokens returns
+   * null: an empty denominator is "not measured", never 0%.
+   */
+  function cacheHitRate(totals) {
+    const prompt = number(totals?.input) + number(totals?.cacheRead);
+    return prompt > 0 ? number(totals?.cacheRead) / prompt : null;
+  }
+
+  /**
+   * The last `limit` calendar days of the filtered window, oldest first.
+   *
+   * Every day in the span is present so a gap in the chart stays a gap instead
+   * of being squeezed out, and each entry carries the token kinds the panel
+   * stacks. `endDay` is the panel's "today" so trailing quiet days stay visible;
+   * without it the series ends on the newest recorded day.
+   */
+  function compositionSeries(summary, limit = 14, endDay) {
+    const days = summary?.daily || [];
+    if (!days.length) return [];
+    const byDay = new Map(days.map((entry) => [entry.date, entry]));
+    const end = endDay ? String(endDay) : days[days.length - 1].date;
+    const span = Math.max(1, Math.min(Number(limit) || 14, 92));
+    const series = [];
+    for (let back = span - 1; back >= 0; back -= 1) {
+      const date = shiftDayKey(end, -back);
+      const entry = byDay.get(date);
+      series.push({
+        date,
+        input: entry ? entry.input : 0,
+        output: entry ? entry.output : 0,
+        cacheRead: entry ? entry.cacheRead : 0,
+        cacheWrite: entry ? entry.cacheWrite : 0,
+        reasoning: entry ? entry.reasoning : 0,
+        total: entry ? entry.total : 0,
+        messages: entry ? entry.messages : 0,
+      });
+    }
+    return series;
+  }
+
+  /**
    * Fold scanned events into the fact cube.
    *
    * `labelForSource` maps a source id to its display label, and
@@ -412,9 +456,22 @@
       sessionIds.add(row[C.session]);
       activeDays.add(day);
 
-      const dayEntry = daily.get(day) || { total: 0, messages: 0 };
+      const dayEntry = daily.get(day) || {
+        total: 0,
+        messages: 0,
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        reasoning: 0,
+      };
       dayEntry.total += row[C.total];
       dayEntry.messages += row[C.messages];
+      dayEntry.input += row[C.input];
+      dayEntry.output += row[C.output];
+      dayEntry.cacheRead += row[C.cacheRead];
+      dayEntry.cacheWrite += row[C.cacheWrite];
+      dayEntry.reasoning += row[C.reasoning];
       daily.set(day, dayEntry);
 
       hourly[row[C.hour]].total += row[C.total];
@@ -510,6 +567,8 @@
     TOKEN_KEYS,
     aggregate,
     buildFacts,
+    cacheHitRate,
+    compositionSeries,
     dateFromDayKey,
     dayKeyFromDate,
     dayKeyFromTimestamp,

@@ -50,7 +50,7 @@ function waitForBackgroundScan() {
 }
 
 test("manifest declares the independent scanner and minimal host permissions", () => {
-  assert.equal(manifest.version, "0.4.8");
+  assert.equal(manifest.version, "0.5.0");
   assert.deepEqual(manifest.permissions, ["ui.panel", "agent.tool.register"]);
   assert.equal(manifest.engines.piDesktop, ">=0.2.9");
   assert.deepEqual(
@@ -393,6 +393,92 @@ test("summary groups models, providers, sessions, time buckets, and streaks", ()
   assert.equal(summary.streak.longest, 2);
   assert.equal(facts.diagnostics.filesScanned, 2);
   assert.equal(facts.diagnostics.malformedLines, 1);
+});
+
+test("daily composition keeps each token kind and the cache hit rate stays unmeasured without prompt tokens", () => {
+  const today = new Date();
+  today.setHours(9, 0, 0, 0);
+  const facts = plugin.__test.buildFacts(
+    [
+      {
+        sourceId: "pi-desktop",
+        sessionId: "abcdef1234567890",
+        timestamp: today.getTime(),
+        modelId: "alpha",
+        providerId: "openai",
+        tokens: { input: 10, output: 5, cacheRead: 30, cacheWrite: 2, reasoning: 1, total: 45 },
+      },
+    ],
+    { generatedAt: Date.now() },
+  );
+  const summary = plugin.__test.aggregate(facts, {}, { now: Date.now() });
+  const day = summary.daily[0];
+  assert.deepEqual(
+    { input: day.input, output: day.output, cacheRead: day.cacheRead, cacheWrite: day.cacheWrite, reasoning: day.reasoning },
+    { input: 10, output: 5, cacheRead: 30, cacheWrite: 2, reasoning: 1 },
+  );
+  // Cache read is a share of the prompt, not of the whole total.
+  assert.ok(Math.abs(plugin.__test.cacheHitRate(summary.totals) - 30 / 40) < 1e-9);
+  assert.equal(plugin.__test.cacheHitRate({ input: 0, cacheRead: 0 }), null);
+  assert.equal(plugin.__test.cacheHitRate({}), null);
+});
+
+test("composition series keeps a quiet day as a gap and starts at the first recorded day", () => {
+  const events = [
+    {
+      sourceId: "pi-desktop",
+      sessionId: "abcdef1234567890",
+      timestamp: new Date(2026, 6, 20, 9).getTime(),
+      modelId: "alpha",
+      providerId: "openai",
+      tokens: { input: 10, output: 5, cacheRead: 30, cacheWrite: 0, reasoning: 0, total: 45 },
+    },
+    {
+      sourceId: "pi-desktop",
+      sessionId: "abcdef1234567890",
+      timestamp: new Date(2026, 6, 22, 9).getTime(),
+      modelId: "alpha",
+      providerId: "openai",
+      tokens: { input: 2, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 3 },
+    },
+  ];
+  const facts = plugin.__test.buildFacts(events, { generatedAt: Date.now() });
+  const summary = plugin.__test.aggregate(facts, {}, { now: Date.now() });
+  // Without an end day the series stops on the newest recorded day.
+  assert.deepEqual(
+    plugin.__test.compositionSeries(summary, 2).map((day) => day.date),
+    ["2026-07-21", "2026-07-22"],
+  );
+  // The panel passes its own today, so trailing quiet days stay in the chart.
+  const series = plugin.__test.compositionSeries(summary, 4, "2026-07-23");
+  assert.deepEqual(
+    series.map((day) => day.date),
+    ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"],
+  );
+  assert.deepEqual(
+    series.map((day) => day.total),
+    [45, 0, 3, 0],
+  );
+  assert.equal(series[0].cacheRead, 30);
+  assert.equal(series[1].input, 0);
+  assert.deepEqual(plugin.__test.compositionSeries(plugin.__test.aggregate(plugin.__test.buildFacts([]), {}), 4), []);
+  // The span is capped so a hand-edited limit cannot ask for a year of columns.
+  assert.equal(plugin.__test.compositionSeries(summary, 500).length, 92);
+});
+
+test("panel renders the overview and daily composition from the same summary", () => {
+  assert.match(panelSource, /function renderOverview\(\)/);
+  assert.match(panelSource, /function renderComposition\(\)/);
+  assert.match(panelSource, /A\.cacheHitRate\(totals\)/);
+  assert.match(panelSource, /A\.compositionSeries\(state\.summary, COMPOSITION_DAYS, A\.todayKey\(\)\)/);
+  assert.match(panelSource, /overviewTitle: "Context overview"/);
+  assert.match(panelSource, /overviewTitle: "全局概览"/);
+  assert.match(panelSource, /compositionTitle: "每日构成"/);
+  assert.match(panelCss, /\.kpi-value \{/);
+  assert.match(panelCss, /\.comp-stack \{/);
+  assert.match(panelCss, /\.seg-cacheRead \{/);
+  // The composition stacks one accent at varying alpha; no second hue.
+  assert.doesNotMatch(panelCss, /\n\.seg-[A-Za-z]+ \{\s*background: #/);
 });
 
 test("on-load writes a snapshot before opening the panel and the tool groups by provider", async () => {
